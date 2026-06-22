@@ -1,0 +1,14 @@
+[package]
+name = "image-to-pure-css-wasm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+image-to-pure-css = { path = "../image-to-pure-css", default-features = false }
+wasm-bindgen = "0.2.125"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--enable-bulk-memory"]

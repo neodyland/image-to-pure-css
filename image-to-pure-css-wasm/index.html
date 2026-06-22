@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Image to Pure CSS Converter</title>
+        <style>
+            body {
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    sans-serif;
+                padding: 20px;
+                max-width: 800px;
+                margin: 0 auto;
+                color: #333;
+            }
+            #drop-area {
+                border: 2px dashed #ccc;
+                border-radius: 8px;
+                padding: 40px 20px;
+                text-align: center;
+                margin-bottom: 20px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                background-color: #fcfcfc;
+            }
+            #drop-area.dragover {
+                background-color: #e3f2fd;
+                border-color: #2196f3;
+            }
+            .controls {
+                background: #f5f5f5;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+            .control-group {
+                margin-bottom: 10px;
+            }
+            .control-group:last-child {
+                margin-bottom: 0;
+            }
+            input[type="range"] {
+                width: 100%;
+                max-width: 300px;
+                vertical-align: middle;
+            }
+            button {
+                padding: 10px 20px;
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 16px;
+                cursor: pointer;
+            }
+            button:disabled {
+                background-color: #ccc;
+                cursor: not-allowed;
+            }
+            #preview-container {
+                margin-top: 20px;
+                margin-bottom: 20px;
+                overflow: auto;
+                border: 1px solid #ddd;
+                background: #fff
+                    url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYGAQYcAP3uCTZhw1gGGYhAGBZIA/ENAEAAUjG6B4gG4jG4BoE2wBw1wAg3gP39h1l8wAAAAASUVORK5CYII=")
+                    repeat;
+            }
+            #output {
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                padding: 20px;
+                min-height: 200px;
+                background: #fff;
+                overflow: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Image to Pure CSS</h1>
+
+        <div id="drop-area">
+            <p>
+                画像をここにドロップするか、クリックしてファイルを選択してください
+            </p>
+            <input
+                type="file"
+                id="file-input"
+                accept="image/*"
+                style="display: none"
+            />
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>
+                    画像の拡大・縮小 (Scale):
+                    <span id="scale-value">1.0</span>x<br />
+                    <input
+                        type="range"
+                        id="scale-input"
+                        min="0.1"
+                        max="3.0"
+                        step="0.1"
+                        value="1.0"
+                    />
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    許容誤差 (Tolerance): <span id="tolerance-value">10.0</span
+                    ><br />
+                    <input
+                        type="range"
+                        id="tolerance-input"
+                        min="0.1"
+                        max="255.9"
+                        step="0.1"
+                        value="10.0"
+                    />
+                </label>
+            </div>
+            <button id="convert-btn" disabled>CSSに変換して描画</button>
+        </div>
+
+        <h3>リサイズプレビュー</h3>
+        <div id="preview-container">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <h3>出力結果</h3>
+        <div id="output"></div>
+
+        <script type="module">
+            import { image_to_pure_css } from "./pkg/client.js";
+
+            const dropArea = document.getElementById("drop-area");
+            const fileInput = document.getElementById("file-input");
+            const scaleInput = document.getElementById("scale-input");
+            const scaleValue = document.getElementById("scale-value");
+            const toleranceInput = document.getElementById("tolerance-input");
+            const toleranceValue = document.getElementById("tolerance-value");
+            const convertBtn = document.getElementById("convert-btn");
+            const canvas = document.getElementById("canvas");
+
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            const output = document.getElementById("output");
+
+            let currentImage = null;
+
+            scaleInput.addEventListener(
+                "input",
+                () => (scaleValue.textContent = scaleInput.value),
+            );
+            toleranceInput.addEventListener(
+                "input",
+                () => (toleranceValue.textContent = toleranceInput.value),
+            );
+
+            dropArea.addEventListener("click", () => fileInput.click());
+            dropArea.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropArea.classList.add("dragover");
+            });
+            dropArea.addEventListener("dragleave", () =>
+                dropArea.classList.remove("dragover"),
+            );
+            dropArea.addEventListener("drop", (e) => {
+                e.preventDefault();
+                dropArea.classList.remove("dragover");
+                if (e.dataTransfer.files.length > 0) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener("change", (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            scaleInput.addEventListener("change", () => {
+                if (currentImage) drawImageToCanvas();
+            });
+
+            function handleFile(file) {
+                if (!file.type.startsWith("image/")) {
+                    alert("画像ファイルを選択してください。");
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        currentImage = img;
+                        drawImageToCanvas();
+                        convertBtn.disabled = false;
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function drawImageToCanvas() {
+                if (!currentImage) return;
+                const scale = parseFloat(scaleInput.value);
+                const width = Math.floor(currentImage.width * scale);
+                const height = Math.floor(currentImage.height * scale);
+                canvas.width = width;
+                canvas.height = height;
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(currentImage, 0, 0, width, height);
+            }
+
+            convertBtn.addEventListener("click", () => {
+                if (!currentImage) return;
+                try {
+                    const now = performance.now();
+                    const htmlString = image_to_pure_css(
+                        new Uint8Array(
+                            ctx.getImageData(0, 0, canvas.width, canvas.height)
+                                .data.buffer,
+                        ),
+                        canvas.width,
+                        canvas.height,
+                        parseFloat(toleranceInput.value),
+                    );
+                    console.log(
+                        `image_to_pure_css took ${performance.now() - now}ms`,
+                    );
+                    let size = htmlString.length;
+                    let type = "B";
+                    if (size > 1000) {
+                        size = size / 1000;
+                        type = "KB";
+                    }
+                    if (size > 1000) {
+                        size = Math.round(size) / 1000;
+                        type = "MB";
+                    }
+                    if (size > 1000) {
+                        size = Math.round(size) / 1000;
+                        type = "GB";
+                    }
+                    console.log(
+                        `image_to_pure_css output size is ${size}${type}`,
+                    );
+                    output.innerHTML = htmlString;
+                } catch (error) {
+                    console.error("image_to_pure_css error: ", error);
+                    output.innerHTML = `<span style="color: red;">実行中にエラーが発生しました。${error}</span>`;
+                }
+            });
+        </script>
+    </body>
+</html>

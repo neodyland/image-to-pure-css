@@ -1,0 +1,44 @@
+name: Build index.html
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-wasm:
+    name: Build wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          install_args: "node@latest pnpm@latest"
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Build wasm
+        run: |
+          cd ./image-to-pure-css-wasm
+          wasm-pack build --release --target web
+          pnpm i
+          pnpm run build
+      - name: Get short SHA
+        id: get_hash
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: build-${{ steps.get_hash.outputs.sha_short }}
+          name: Build ${{ steps.get_hash.outputs.sha_short }}
+          prerelease: true
+          files: ./image-to-pure-css-wasm/dist/index.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
